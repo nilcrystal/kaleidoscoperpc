@@ -1,0 +1,32 @@
+# Text: always LF
+* text=auto
+
+# Go: tab, always LF, no auto-convertation
+*.go         text eol=lf
+go.mod       text eol=lf
+go.sum       text eol=lf
+
+# Shell: always LF
+*.sh         text eol=lf
+*.bash       text eol=lf
+
+# YAML / CI: always LF (runs on Linux runners)
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+# Documentation and build files: always LF
+Makefile     text eol=lf
+*.md         text eol=lf
+
+# Windows-scripts: always CRLF
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+# Binary
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
