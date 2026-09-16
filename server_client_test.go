@@ -210,6 +210,83 @@ func TestServerInvalidOutboundBecomes500WithoutPartialHeaders(t *testing.T) {
 	}
 }
 
+func TestServerRejectsOutboundFragmentCollision(t *testing.T) {
+	mux := NewMux()
+	_ = mux.HandleFunc("x", func(context.Context, *Request) (*Response, error) {
+		r := NewResponse()
+		// 30 bytes with FragmentSize=10 → three fragments:
+		// X-Kaleidoscope-A-Long1, -A-Long2, -A-Long3
+		if err := r.Set("a_long", strings.Repeat("x", 30)); err != nil {
+			return nil, err
+		}
+		// 3 bytes with FragmentSize=10 → NOT fragmented,
+		// written directly into X-Kaleidoscope-A-Long1, overwriting
+		// the first fragment of a_long.
+		if err := r.Set("a_long1", "hi!"); err != nil {
+			return nil, err
+		}
+		return r, nil
+	})
+	s := newTestServer(t, ServerConfig{Mux: mux, FragmentSize: 10})
+	r := validRequest(t, "http://example/x")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d, want 500", w.Code)
+	}
+	if w.Header().Get(HeaderVersion) != Version {
+		t.Fatal("version missing")
+	}
+	if w.Header().Get(HeaderService) != "" {
+		t.Fatalf("partial service header leaked: %q", w.Header().Get(HeaderService))
+	}
+	if w.Header().Get("X-Kaleidoscope-A-Long1") != "" {
+		t.Fatal("partial argument header leaked")
+	}
+	if w.Body.Len() != 0 {
+		t.Fatalf("body=%q", w.Body.String())
+	}
+}
+
+func TestEncodeRejectsFragmentFieldCollision(t *testing.T) {
+	a := NewArgs()
+	if err := a.Set("a_long", strings.Repeat("x", 30)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Set("a_long1", "hi!"); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://example/", nil)
+	err := EncodeRequest(r, "x", a, EncodeOptions{FragmentSize: 10})
+	requireCode(t, err, ErrFieldCollision)
+}
+
+func TestEncodeRejectsFragmentFieldCollisionReversedOrder(t *testing.T) {
+	a := NewArgs()
+	if err := a.Set("a_long1", "hi!"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Set("a_long", strings.Repeat("x", 30)); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://example/", nil)
+	err := EncodeRequest(r, "x", a, EncodeOptions{FragmentSize: 10})
+	requireCode(t, err, ErrFieldCollision)
+}
+
+func TestEncodeRejectsFragmentedDirectiveCollision(t *testing.T) {
+	a := NewArgs()
+	if err := a.Set("a_long", strings.Repeat("x", 30)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Set("a_long12", strings.Repeat("y", 6)); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "http://example/", nil)
+	err := EncodeRequest(r, "x", a, EncodeOptions{FragmentSize: 2})
+	requireCode(t, err, ErrDirectiveCollision)
+}
+
 func TestMuxDuplicateAndConcurrentSafeLookup(t *testing.T) {
 	mux := NewMux()
 	h := HandlerFunc(func(context.Context, *Request) (*Response, error) { return nil, nil })

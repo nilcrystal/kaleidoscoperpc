@@ -361,6 +361,22 @@ func encodeArgs(args *Args, o EncodeOptions) (http.Header, error) {
 	if len(args.values) > o.Limits.MaxArguments {
 		return nil, protocolError(ErrTooManyArguments, "arguments", "outbound argument count exceeds configured limit")
 	}
+
+	// claimed maps a canonical header name to the logical argument that
+	// owns it. Fragment headers of one argument must not collide with bare
+	// headers of another: X-Kaleidoscope-A-Long1 could belong to either
+	// "a_long" fragment 1 or to a bare "a_long1", and once written, the
+	// distinction is lost.
+	claimed := make(map[string]string)
+	claim := func(field, owner string) error {
+		if prev, ok := claimed[field]; ok && prev != owner {
+			return protocolError(ErrFieldCollision, field,
+				"field claimed by "+prev+" and "+owner)
+		}
+		claimed[field] = owner
+		return nil
+	}
+
 	names := make([]string, 0, len(args.values))
 	for name := range args.values {
 		names = append(names, name)
@@ -393,6 +409,9 @@ func encodeArgs(args *Args, o EncodeOptions) (http.Header, error) {
 		}
 		base := argumentHeaderName(name)
 		if len(wire) <= o.FragmentSize {
+			if err := claim(base, name); err != nil {
+				return nil, err
+			}
 			h.Set(base, wire)
 			fields++
 			total += len(base) + len(wire)
@@ -409,6 +428,9 @@ func encodeArgs(args *Args, o EncodeOptions) (http.Header, error) {
 			dirs[name] = d
 			for i, chunk := range chunks {
 				key := base + strconv.Itoa(i+1)
+				if err := claim(key, name); err != nil {
+					return nil, err
+				}
 				h.Set(key, chunk)
 				fields++
 				total += len(key) + len(chunk)

@@ -31,6 +31,7 @@ const (
 	ErrDuplicateDirective     ErrorCode = "duplicate_directive"
 	ErrInvalidFragmentCount   ErrorCode = "invalid_fragment_count"
 	ErrDirectiveCollision     ErrorCode = "directive_collision"
+	ErrFieldCollision         ErrorCode = "field_collision"
 	ErrMissingArgument        ErrorCode = "missing_argument"
 	ErrMissingFragment        ErrorCode = "missing_fragment"
 	ErrUnexpectedFragment     ErrorCode = "unexpected_fragment"
